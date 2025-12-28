@@ -1,0 +1,35 @@
+postgres:
+  host: "postgres"
+  port: 5432
+  username: "task-user"
+  password: "task-password"
+  database: "task"
+  max_conns: 10
+  min_conns: 5
+
+pr:
+  host: avito-service
+  port: 8080
+
+api:
+  host: api-service
+  port: 50051
+
+processor:
+  host: processor
+  port: 50052
+
+redis:
+  addr: "my_redis_container:6379"
+  password: ""
+  user: ""
+  db: 0
+  max_retries: 5
+  dial_timeout: 5
+  timeout: 3
+
+kafka:
+  brokers:
+    - "kafka:9091"
+    - "kafka:9092"
+    - "kafka:9093"
