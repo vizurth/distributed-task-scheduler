@@ -7,10 +7,6 @@ postgres:
   max_conns: 10
   min_conns: 5
 
-pr:
-  host: avito-service
-  port: 8080
-
 api:
   host: api-service
   port: 50051
