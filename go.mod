@@ -6,12 +6,14 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/redis/go-redis/v9 v9.17.2
 	gitlab.com/vizurth/protos v0.0.0-20251229110857-1cedab4d5820
 	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.78.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -36,7 +38,6 @@ require (
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )

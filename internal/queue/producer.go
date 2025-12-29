@@ -6,25 +6,8 @@ import (
 	"strings"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/vizurth/distributed-task-scheduler/internal/models"
 )
-
-type TaskMessage struct {
-	TaskID     string      `json:"task_id"`
-	TaskType   string      `json:"task_type"`
-	Payload    interface{} `json:"payload"`
-	Priority   int         `json:"priority"`
-	DeadlineMs int64       `json:"deadline_ms"`
-	UserID     string      `json:"user_id"`
-}
-
-type ResultMessage struct {
-	TaskID          string      `json:"task_id"`
-	WorkerID        string      `json:"worker_id"`
-	Status          string      `json:"status"`
-	Result          interface{} `json:"result,omitempty"`
-	Error           string      `json:"error,omitempty"`
-	ExecutionTimeMs int64       `json:"execution_time_ms"`
-}
 
 type Producer struct {
 	producer *kafka.Producer
@@ -48,11 +31,11 @@ func NewProducer(config *Config) (*Producer, error) {
 	}, nil
 }
 
-func (p *Producer) SendTask(msg *TaskMessage) error {
+func (p *Producer) SendTask(msg *models.KafkaTaskMessage) error {
 	return p.send(msg, p.config.TasksNewTopic, msg.TaskID)
 }
 
-func (p *Producer) SendResult(msg *ResultMessage) error {
+func (p *Producer) SendResult(msg *models.KafkaResultMessage) error {
 	return p.send(msg, p.config.TasksResultsTopic, msg.TaskID)
 }
 
