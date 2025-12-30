@@ -503,18 +503,17 @@ func (r *repositoryImpl) CancelTask(ctx context.Context, taskID string) (*models
 
 // cacheTask кеширует задачу в Redis
 func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error {
-	taskJSON, err := json.Marshal(task)
+	taskJson, err := json.Marshal(task)
 	if err != nil {
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		log.Error(ctx, "failed to marshal task for Redis cache", zap.String("task_id", task.TaskID), zap.Error(err))
-		return fmt.Errorf("failed to marshal task: %w", err)
+		return fmt.Errorf("failed to marshal task for Redis cache: %w", err)
 	}
-
 	key := r.getRedisKey(task.TaskID)
-	err = r.client.Set(ctx, key, taskJSON, redisTaskTTL).Err()
+	err = r.client.Set(ctx, key, taskJson, redisTaskTTL).Err()
 	if err != nil {
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
-		log.Error(ctx, "failed to set task in Redis cache", zap.String("task_id", task.TaskID), zap.String("key", key), zap.Error(err))
+		log.Error(ctx, "failed to cache task", zap.String("task_id", task.TaskID), zap.Error(err))
 	}
 	return err
 }
@@ -528,16 +527,15 @@ func (r *repositoryImpl) getTaskFromCache(ctx context.Context, taskID string) (*
 			return nil, nil
 		}
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
-		log.Warn(ctx, "failed to get task from Redis cache", zap.String("task_id", taskID), zap.String("key", key), zap.Error(err))
-		return nil, err
+		log.Error(ctx, "failed to get task from cache", zap.String("task_id", taskID), zap.Error(err))
+		return nil, fmt.Errorf("failed to get task from cache: %w", err)
 	}
 
 	var task models.Task
 	if err := json.Unmarshal([]byte(val), &task); err != nil {
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
-		log.Error(ctx, "failed to unmarshal task from Redis cache", zap.String("task_id", taskID), zap.Error(err))
-		return nil, fmt.Errorf("failed to unmarshal task: %w", err)
+		log.Error(ctx, "failed to unmarshal task from cache", zap.String("task_id", taskID), zap.Error(err))
+		return nil, fmt.Errorf("failed to unmarshal task from cache: %w", err)
 	}
-
 	return &task, nil
 }
