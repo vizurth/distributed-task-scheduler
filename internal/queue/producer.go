@@ -1,17 +1,25 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
+	"go.uber.org/zap"
 )
 
 type Producer struct {
-	producer *kafka.Producer
-	config   *Config
+	producer        *kafka.Producer
+	config          *Config
+	deliveryChannel chan kafka.Event
+	stopChan        chan struct{}
+	wg              sync.WaitGroup
 }
 
 func NewProducer(config *Config) (*Producer, error) {
@@ -25,25 +33,36 @@ func NewProducer(config *Config) (*Producer, error) {
 		return nil, fmt.Errorf("failed to create producer: %w", err)
 	}
 
-	return &Producer{
-		producer: p,
-		config:   config,
-	}, nil
+	producer := &Producer{
+		producer:        p,
+		config:          config,
+		deliveryChannel: make(chan kafka.Event, 500000),
+		stopChan:        make(chan struct{}),
+	}
+
+	// Запускаем обработчик доставок
+	producer.wg.Add(1)
+	go producer.handleDeliveries()
+
+	return producer, nil
 }
 
 func (p *Producer) SendTask(msg *models.KafkaTaskMessage) error {
-	return p.send(msg, p.config.TasksNewTopic, msg.TaskID)
+	return p.sendMessage(msg, p.config.TasksNewTopic)
 }
 
 func (p *Producer) SendResult(msg *models.KafkaResultMessage) error {
-	return p.send(msg, p.config.TasksResultsTopic, msg.TaskID)
+	return p.sendMessage(msg, p.config.TasksResultsTopic)
 }
 
-func (p *Producer) send(message interface{}, topic, key string) error {
+func (p *Producer) sendMessage(message interface{}, topic string) error {
 	bytes, err := json.Marshal(message)
 	if err != nil {
+		metrics.KafkaOperationTotal.WithLabelValues("send", "error").Inc()
 		return err
 	}
+
+	key := p.getMessageKey(message)
 
 	kafkaMsg := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
@@ -54,23 +73,54 @@ func (p *Producer) send(message interface{}, topic, key string) error {
 		Key:   []byte(key),
 	}
 
-	deliveryChan := make(chan kafka.Event)
-	err = p.producer.Produce(kafkaMsg, deliveryChan)
-	if err != nil {
-		return err
+	// АСИНХРОННАЯ отправка - возвращаемся сразу
+	if err := p.producer.Produce(kafkaMsg, p.deliveryChannel); err != nil {
+		metrics.KafkaOperationTotal.WithLabelValues("produce", "error").Inc()
+		return fmt.Errorf("produce failed: %w", err)
 	}
 
-	e := <-deliveryChan
-	m := e.(*kafka.Message)
-
-	if m.TopicPartition.Error != nil {
-		return fmt.Errorf("delivery failed: %v", m.TopicPartition.Error)
-	}
-
+	metrics.KafkaOperationTotal.WithLabelValues("produce", "success").Inc()
 	return nil
 }
 
+func (p *Producer) handleDeliveries() {
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.stopChan:
+			return
+		case event := <-p.deliveryChannel:
+			m := event.(*kafka.Message)
+			if m.TopicPartition.Error != nil {
+				metrics.KafkaOperationTotal.WithLabelValues("delivery", "error").Inc()
+				logger.GetOrCreateLoggerFromCtx(context.Background()).Error(
+					context.Background(),
+					"kafka delivery failed",
+					zap.Error(m.TopicPartition.Error),
+				)
+			} else {
+				metrics.KafkaOperationTotal.WithLabelValues("delivery", "success").Inc()
+				metrics.KafkaMessagesSent.WithLabelValues(*m.TopicPartition.Topic).Inc()
+			}
+		}
+	}
+}
+
+func (p *Producer) getMessageKey(message interface{}) string {
+	switch msg := message.(type) {
+	case *models.KafkaTaskMessage:
+		return msg.TaskID
+	case *models.KafkaResultMessage:
+		return msg.TaskID
+	default:
+		return "default"
+	}
+}
+
 func (p *Producer) Close() {
-	p.producer.Flush(5000)
+	close(p.stopChan)
+	p.wg.Wait()
+	p.producer.Flush(30000)
 	p.producer.Close()
 }

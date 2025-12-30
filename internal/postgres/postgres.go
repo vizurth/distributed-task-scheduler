@@ -38,9 +38,9 @@ func New(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	// 2. Применяем настройки пула
 	poolCfg.MaxConns = cfg.MaxConns
 	poolCfg.MinConns = cfg.MinConns
-	poolCfg.MaxConnLifetime = 5 * time.Minute
-	poolCfg.MaxConnIdleTime = 1 * time.Minute
-	poolCfg.HealthCheckPeriod = 30 * time.Second
+	poolCfg.MaxConnLifetime = 30 * time.Minute  // Было 5min → 30min
+	poolCfg.MaxConnIdleTime = 5 * time.Minute   // Было 1min → 5min
+	poolCfg.HealthCheckPeriod = 1 * time.Minute // Было 30s → 1min
 
 	// (опционально) логирование
 	// poolCfg.ConnConfig.Logger = pgxlog.NewLogger(...)

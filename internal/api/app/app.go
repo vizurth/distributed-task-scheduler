@@ -77,18 +77,26 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	taskHandler := handler.NewHandler(taskService)
 
 	opts := []grpc.ServerOption{
-		// Увеличь размер буфера
-		grpc.MaxConcurrentStreams(10000),
-		grpc.MaxHeaderListSize(16 * 1024),
+		// Увеличиваем лимиты
+		grpc.MaxConcurrentStreams(100000),
+		grpc.MaxHeaderListSize(32 * 1024),
+		grpc.InitialConnWindowSize(32 * 1024 * 1024),
+		grpc.InitialWindowSize(16 * 1024 * 1024),
 
-		// Настройка keepalive
+		// Оптимальный keepalive
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    20 * time.Second,
-			Timeout: 10 * time.Second,
+			Time:    15 * time.Second,
+			Timeout: 5 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
 		}),
 
-		// Connection backlog
-		grpc.ConnectionTimeout(5 * time.Second),
+		// Увеличиваем буферы
+		grpc.WriteBufferSize(64 * 1024),
+		grpc.ReadBufferSize(64 * 1024),
+
 		grpc.UnaryInterceptor(
 			interceptors.TimeoutInterceptor(4 * time.Second),
 		),
