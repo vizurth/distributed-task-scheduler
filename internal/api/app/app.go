@@ -17,6 +17,7 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
 	"github.com/vizurth/distributed-task-scheduler/internal/grpc/interceptors"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/postgres"
 	"github.com/vizurth/distributed-task-scheduler/internal/queue"
 	myredis "github.com/vizurth/distributed-task-scheduler/internal/redis"
@@ -47,6 +48,14 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for range ticker.C {
+			stats := pool.Stat()
+			metrics.DBConnectionsAvailable.Set(float64(stats.TotalConns()))
+			metrics.DBConnectionsInUse.Set(float64(stats.AcquiredConns()))
+		}
+	}()
 
 	err = postgres.Migrate(ctx, config.Postgres)
 	if err != nil {
