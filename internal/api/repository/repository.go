@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"go.uber.org/zap"
 )
@@ -52,6 +53,14 @@ func unixMsToTime(ms int64) time.Time {
 
 // CreateTask создает новую задачу в БД
 func (r *repositoryImpl) CreateTask(ctx context.Context, task *models.TaskCreate) (*models.Task, error) {
+	start := time.Now()
+	operation := "CreateTask"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.DBOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	taskID := uuid.New().String()
 	now := time.Now()
 	createdAtMs := timeToUnixMs(now)
@@ -61,6 +70,7 @@ func (r *repositoryImpl) CreateTask(ctx context.Context, task *models.TaskCreate
 	// Конвертируем payload в JSONB
 	payloadJSON, err := json.Marshal(json.RawMessage(task.Payload))
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log.Error(ctx, "failed to marshal payload", zap.String("task_id", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
@@ -73,15 +83,19 @@ func (r *repositoryImpl) CreateTask(ctx context.Context, task *models.TaskCreate
 		ToSql()
 
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log.Error(ctx, "failed to build insert query", zap.String("task_id", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to build insert query: %w", err)
 	}
 
 	_, err = r.db.Exec(ctx, query, args...)
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log.Error(ctx, "failed to insert task into database", zap.String("task_id", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to insert task: %w", err)
 	}
+
+	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
 
 	// Создаем объект Task для возврата
 	createdTask := &models.Task{
@@ -108,11 +122,24 @@ func (r *repositoryImpl) CreateTask(ctx context.Context, task *models.TaskCreate
 
 // GetTaskByID возвращает задачу по ID
 func (r *repositoryImpl) GetTaskByID(ctx context.Context, taskID string) (*models.Task, error) {
+	start := time.Now()
+	operation := "GetTaskByID"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.DBOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	// Сначала проверяем Redis кеш
 	cachedTask, err := r.getTaskFromCache(ctx, taskID)
 	if err == nil && cachedTask != nil {
+		metrics.RedisCacheHits.Inc()
+		metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
 		return cachedTask, nil
 	}
+
+	// Cache miss - будем получать из БД
+	metrics.RedisCacheMisses.Inc()
 
 	// Если в кеше нет, получаем из PostgreSQL
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
@@ -152,6 +179,7 @@ func (r *repositoryImpl) GetTaskByID(ctx context.Context, taskID string) (*model
 	)
 
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		if err == pgx.ErrNoRows {
 			log.Warn(ctx, "task not found in database", zap.String("task_id", taskID))
@@ -219,11 +247,22 @@ func (r *repositoryImpl) GetTaskByID(ctx context.Context, taskID string) (*model
 		log.Warn(ctx, "failed to cache task in Redis", zap.String("task_id", taskID), zap.Error(err))
 	}
 
+	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
+	metrics.RedisCacheMisses.Inc() // Cache miss, got from DB
+
 	return task, nil
 }
 
 // UpdateTask обновляет задачу
 func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *models.TaskUpdate) (*models.Task, error) {
+	start := time.Now()
+	operation := "UpdateTask"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.DBOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	// Строим UPDATE запрос динамически
 	updateBuilder := r.psql.Update("tasks").Where(sq.Eq{"id": taskID})
 
@@ -291,6 +330,7 @@ func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *
 	)
 
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		if err == pgx.ErrNoRows {
 			log.Warn(ctx, "task not found for update", zap.String("task_id", taskID))
 			return nil, fmt.Errorf("task not found: %w", err)
@@ -356,11 +396,20 @@ func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *
 		_ = err
 	}
 
+	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
 	return task, nil
 }
 
 // ListTasks возвращает список задач по фильтру
 func (r *repositoryImpl) ListTasks(ctx context.Context, filter *models.TaskFilter) ([]*models.Task, error) {
+	start := time.Now()
+	operation := "ListTasks"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.DBOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	queryBuilder := r.psql.
 		Select("id", "user_id", "task_type", "payload", "result", "error", "status", "priority", "deadline_ms",
 			"created_at", "started_at", "completed_at", "execution_time_ms", "webhook_url").
@@ -394,6 +443,7 @@ func (r *repositoryImpl) ListTasks(ctx context.Context, filter *models.TaskFilte
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log.Error(ctx, "failed to query tasks from database", zap.Error(err))
 		return nil, fmt.Errorf("failed to query tasks: %w", err)
 	}
@@ -482,10 +532,12 @@ func (r *repositoryImpl) ListTasks(ctx context.Context, filter *models.TaskFilte
 	}
 
 	if err := rows.Err(); err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
 		log.Error(ctx, "error iterating tasks", zap.Error(err))
 		return nil, fmt.Errorf("error iterating tasks: %w", err)
 	}
 
+	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
 	return tasks, nil
 }
 
@@ -503,8 +555,17 @@ func (r *repositoryImpl) CancelTask(ctx context.Context, taskID string) (*models
 
 // cacheTask кеширует задачу в Redis
 func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error {
+	start := time.Now()
+	operation := "cache_set"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.RedisOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	taskJson, err := json.Marshal(task)
 	if err != nil {
+		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		log.Error(ctx, "failed to marshal task for Redis cache", zap.String("task_id", task.TaskID), zap.Error(err))
 		return fmt.Errorf("failed to marshal task for Redis cache: %w", err)
@@ -512,20 +573,33 @@ func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error
 	key := r.getRedisKey(task.TaskID)
 	err = r.client.Set(ctx, key, taskJson, redisTaskTTL).Err()
 	if err != nil {
+		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		log.Error(ctx, "failed to cache task", zap.String("task_id", task.TaskID), zap.Error(err))
+	} else {
+		metrics.RedisOperationTotal.WithLabelValues(operation, "success").Inc()
 	}
 	return err
 }
 
 // getTaskFromCache получает задачу из Redis кеша
 func (r *repositoryImpl) getTaskFromCache(ctx context.Context, taskID string) (*models.Task, error) {
+	start := time.Now()
+	operation := "cache_get"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.RedisOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
 	key := r.getRedisKey(taskID)
 	val, err := r.client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
+			metrics.RedisOperationTotal.WithLabelValues(operation, "not_found").Inc()
 			return nil, nil
 		}
+		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		log.Error(ctx, "failed to get task from cache", zap.String("task_id", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to get task from cache: %w", err)
@@ -533,9 +607,12 @@ func (r *repositoryImpl) getTaskFromCache(ctx context.Context, taskID string) (*
 
 	var task models.Task
 	if err := json.Unmarshal([]byte(val), &task); err != nil {
+		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
 		log.Error(ctx, "failed to unmarshal task from cache", zap.String("task_id", taskID), zap.Error(err))
 		return nil, fmt.Errorf("failed to unmarshal task from cache: %w", err)
 	}
+
+	metrics.RedisOperationTotal.WithLabelValues(operation, "success").Inc()
 	return &task, nil
 }

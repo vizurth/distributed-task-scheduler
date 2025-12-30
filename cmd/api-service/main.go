@@ -7,10 +7,19 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/api/app"
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"go.uber.org/zap"
 )
 
 func main() {
+	if err := metrics.RegisterMetrics(); err != nil {
+		panic("failed to register metrics: " + err.Error())
+	}
+
+	// Запусти metrics HTTP server на порту 8001 с health checks
+	metricsPort := "8001"
+	metrics.StartMetricsServer(metricsPort)
+
 	ctx := context.Background()
 	cfg, err := config.New()
 

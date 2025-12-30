@@ -1,6 +1,9 @@
 volumes:
   postgres_data:
   redis-data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
 
 services:
   postgres:
@@ -108,6 +111,67 @@ services:
       - kafka-net
 
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    networks:
+      - monitoring
+
+  # НОВОЕ: Loki
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  # НОВОЕ: Promtail (собирает логи)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitoring
+    depends_on:
+      - loki
+
+  # НОВОЕ: Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - loki
+
+  # API service
   api-service:
     build:
       context: ./
@@ -116,14 +180,18 @@ services:
     restart: on-failure
     ports:
       - "50051:50051"
+      - "8001:8001"  # Порт для метрик
     depends_on:
       - postgres
       - redis
       - kafka1
-      - kafka2
-      - kafka3
     networks:
       - kafka-net
+      - monitoring
+    logging:
+      driver: "json-file"
+      options:
+        labels: "service=api-service"
 
   processor:
     build:
@@ -151,5 +219,7 @@ services:
       - redis
 
 networks:
+  monitoring:
+    driver: bridge
   kafka-net:
     driver: bridge

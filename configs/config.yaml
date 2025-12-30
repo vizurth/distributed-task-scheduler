@@ -4,7 +4,7 @@ postgres:
   username: "task-user"
   password: "task-password"
   database: "task"
-  max_conns: 25
+  max_conns: 32
   min_conns: 10
 
 api:
