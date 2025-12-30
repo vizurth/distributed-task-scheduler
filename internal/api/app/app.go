@@ -23,6 +23,7 @@ import (
 	taskpb "gitlab.com/vizurth/protos/gen/go/task/task-api-service"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 type App struct {
@@ -66,11 +67,25 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	taskService := service.NewService(taskRepo, producer)
 	taskHandler := handler.NewHandler(taskService)
 
-	grpcServer := grpc.NewServer(
+	opts := []grpc.ServerOption{
+		// Увеличь размер буфера
+		grpc.MaxConcurrentStreams(10000),
+		grpc.MaxHeaderListSize(16 * 1024),
+
+		// Настройка keepalive
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    20 * time.Second,
+			Timeout: 10 * time.Second,
+		}),
+
+		// Connection backlog
+		grpc.ConnectionTimeout(5 * time.Second),
 		grpc.UnaryInterceptor(
 			interceptors.TimeoutInterceptor(4 * time.Second),
 		),
-	)
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 
 	taskpb.RegisterTaskAPIServer(grpcServer, taskHandler)
 

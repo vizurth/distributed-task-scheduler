@@ -4,8 +4,8 @@ postgres:
   username: "task-user"
   password: "task-password"
   database: "task"
-  max_conns: 10
-  min_conns: 5
+  max_conns: 25
+  min_conns: 10
 
 api:
   host: api-service
@@ -26,6 +26,7 @@ redis:
 
 kafka:
   brokers:
-    - "kafka:9091"
-    - "kafka:9092"
-    - "kafka:9093"
+    - kafka1:29091
+    - kafka2:29092
+    - kafka3:29093
+

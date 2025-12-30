@@ -29,20 +29,30 @@ type Config struct {
 
 // New создает новое подключение к Postgres
 func New(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
-	// создаем строку подключения с параметрами пула
-	connString := cfg.GetConnString()
-	connString += fmt.Sprintf("&pool_max_conns=%d&pool_min_conns=%d",
-		cfg.MaxConns,
-		cfg.MinConns,
-	)
+	// 1. Парсим строку подключения
+	poolCfg, err := pgxpool.ParseConfig(cfg.GetConnString())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse postgres config: %w", err)
+	}
 
-	// создаем пул подключений
-	conn, err := pgxpool.New(ctx, connString)
+	// 2. Применяем настройки пула
+	poolCfg.MaxConns = cfg.MaxConns
+	poolCfg.MinConns = cfg.MinConns
+	poolCfg.MaxConnLifetime = 5 * time.Minute
+	poolCfg.MaxConnIdleTime = 1 * time.Minute
+	poolCfg.HealthCheckPeriod = 30 * time.Second
+
+	// (опционально) логирование
+	// poolCfg.ConnConfig.Logger = pgxlog.NewLogger(...)
+	// poolCfg.ConnConfig.LogLevel = pgx.LogLevelDebug
+
+	// 3. Создаем пул
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
 	}
 
-	return conn, nil
+	return pool, nil
 }
 
 // Migrate выполняет миграции базы данных Postgres
