@@ -11,7 +11,7 @@ import (
 )
 
 // PRConfig содержит настройки для сервера PR
-type PRConfig struct {
+type ApiConfig struct {
 	Host string `yaml:"host"`
 	Port string `yaml:"port"`
 }
@@ -21,7 +21,7 @@ type Config struct {
 	Postgres postgres.Config `yaml:"postgres"`
 	Kafka    queue.Config    `yaml:"kafka"`
 	Redis    redis.Config    `yaml:"redis"`
-	PR       PRConfig        `yaml:"pr"`
+	Api      ApiConfig       `yaml:"api"`
 }
 
 // New загружает конфигурацию из файла и возвращает Config

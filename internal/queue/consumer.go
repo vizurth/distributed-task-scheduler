@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/vizurth/distributed-task-scheduler/internal/models"
 )
 
 type Message struct {
@@ -59,14 +60,14 @@ func (c *Consumer) Read(ctx context.Context) (*Message, error) {
 
 	// Парсим в зависимости от топики
 	if topic == c.config.TasksNewTopic {
-		var task TaskMessage
+		var task models.KafkaTaskMessage
 		if err := json.Unmarshal(kafkaMsg.Value, &task); err != nil {
 			return nil, err
 		}
 		msgType = "task"
 		data = &task
 	} else if topic == c.config.TasksResultsTopic {
-		var result ResultMessage
+		var result models.KafkaResultMessage
 		if err := json.Unmarshal(kafkaMsg.Value, &result); err != nil {
 			return nil, err
 		}

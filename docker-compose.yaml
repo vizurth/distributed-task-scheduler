@@ -13,6 +13,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kafka-net
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.7.1
@@ -93,8 +95,6 @@ services:
       - kafka3
     networks:
       - kafka-net
-      -
-
 
 
   redis:
@@ -104,6 +104,8 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    networks:
+      - kafka-net
 
 
   api-service:
@@ -117,7 +119,11 @@ services:
     depends_on:
       - postgres
       - redis
-      - kafka
+      - kafka1
+      - kafka2
+      - kafka3
+    networks:
+      - kafka-net
 
   processor:
     build:
@@ -130,7 +136,9 @@ services:
     depends_on:
       - postgres
       - redis
-      - kafka
+      - kafka1
+      - kafka2
+      - kafka3
 
   worker:
     build:
