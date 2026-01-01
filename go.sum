@@ -350,6 +350,8 @@ github.com/yusufpapurcu/wmi v1.2.3 h1:E1ctvB7uKFMOJw3fdOW32DwGE9I7t++CRUEMKvFoFi
 github.com/yusufpapurcu/wmi v1.2.3/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 gitlab.com/vizurth/protos v0.0.0-20251229110857-1cedab4d5820 h1:byGD5u+E9CMBYXyi2UeVHP1HmyFauMCAsZBupRntVcY=
 gitlab.com/vizurth/protos v0.0.0-20251229110857-1cedab4d5820/go.mod h1:RpGmdxXC8A6Um0dsp1X7sWkEqfRogINdM98bqAw5cyg=
+gitlab.com/vizurth/protos v0.0.0-20260101104552-d3e5d3b8b5af h1:YQpt63cBnc5ltIkEs3W3XiEN3o7UGcvK4AGjYcj+kwQ=
+gitlab.com/vizurth/protos v0.0.0-20260101104552-d3e5d3b8b5af/go.mod h1:RpGmdxXC8A6Um0dsp1X7sWkEqfRogINdM98bqAw5cyg=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 h1:q4XOmH/0opmeuJtPsbFNivyl7bCt7yRBbeEm2sC/XtQ=

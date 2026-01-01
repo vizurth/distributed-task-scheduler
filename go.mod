@@ -11,8 +11,9 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/redis/go-redis/v9 v9.17.2
-	gitlab.com/vizurth/protos v0.0.0-20251229110857-1cedab4d5820
+	gitlab.com/vizurth/protos v0.0.0-20260101104552-d3e5d3b8b5af
 	go.uber.org/zap v1.27.1
+	golang.org/x/oauth2 v0.32.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )

@@ -99,7 +99,6 @@ services:
     networks:
       - kafka-net
 
-
   redis:
     image: redis:latest
     container_name: my_redis_container
@@ -109,7 +108,6 @@ services:
       - redis-data:/data
     networks:
       - kafka-net
-
 
   prometheus:
     image: prom/prometheus:latest
