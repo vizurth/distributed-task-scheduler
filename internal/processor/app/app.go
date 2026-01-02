@@ -66,11 +66,8 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	workerManager := manager.NewWorkerManager()
 
 	processorRepo := repository.NewRepository(pool, client)
-
 	processorService := service.NewService(processorRepo, producer)
-
 	processorHandler := handler.NewHandler(processorService, pool, client, producer, workerManager, taskQueue)
-
 	grpcServer := grpc.NewServer(
 		grpc.MaxConcurrentStreams(100000),
 	)
