@@ -1,24 +1,43 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.4
 
-FROM golang:1.25 AS builder
+############################
+#       BUILDER (glibc)
+############################
+FROM golang:1.25-bookworm AS builder
+
+WORKDIR /build
+
+# Устанавливаем системные зависимости
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libc6-dev librdkafka-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем мод-файлы
+COPY go.mod go.sum ./
+
+# Кэшируем зависимости Go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+# Копируем весь проект
+COPY . .
+
+# Сборка (CGO + amd64)
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 \
+    go build -o worker ./cmd/worker/main.go
+
+
+############################
+#       FINAL IMAGE
+############################
+FROM gcr.io/distroless/base-debian12
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
-
-COPY . .
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
-
-FROM alpine:latest
-
-RUN apk add --no-cache ca-certificates
-
-WORKDIR /root/
-
-COPY --from=builder /app/worker .
+COPY --from=builder /build/worker .
+COPY --from=builder /build/configs ./configs
+COPY --from=builder /build/migrations ./migrations
 
 CMD ["./worker"]

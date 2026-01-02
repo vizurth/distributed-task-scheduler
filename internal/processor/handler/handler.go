@@ -2,8 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -13,6 +11,7 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/manager"
+	"github.com/vizurth/distributed-task-scheduler/internal/processor/service"
 	"github.com/vizurth/distributed-task-scheduler/internal/queue"
 	processpb "gitlab.com/vizurth/protos/gen/go/task/task-processor"
 	"go.uber.org/zap"
@@ -21,6 +20,7 @@ import (
 
 type Handler struct {
 	processpb.UnimplementedTaskProcessorServer
+	service       service.Service
 	pool          *pgxpool.Pool
 	client        *redis.Client
 	producer      *queue.Producer
@@ -29,8 +29,9 @@ type Handler struct {
 	mu            sync.RWMutex
 }
 
-func NewHandler(pool *pgxpool.Pool, client *redis.Client, producer *queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
+func NewHandler(service service.Service, pool *pgxpool.Pool, client *redis.Client, producer *queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
 	h := &Handler{
+		service:       service,
 		pool:          pool,
 		client:        client,
 		producer:      producer,
@@ -79,7 +80,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 		h.workerManager.UpdateSlots(workerID, msg.AvailableSlots)
 
 		if msg.Result != nil {
-			h.handleTaskResult() // TODO: заглушка на репозиторий
+			h.service.UpdateTask(ctx, msg) // TODO: заглушка на репозиторий
 			// TODO: метрики по результатам
 		}
 
@@ -98,69 +99,10 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 				}
 				tasksAssigned++
 
-				h.updateTaskStatus()
+				h.service.UpdateTaskStatus(ctx, task.TaskID, models.TaskStatusProcessing, workerID)
 			}
 		}
 	}
-}
-
-// TODO: заглушка чтобы потом сделать репозиторий
-func (h *Handler) handleTaskResult(ctx context.Context, msg *processpb.WorkerMessage) {
-	log := logger.GetOrCreateLoggerFromCtx(ctx)
-
-	taskID := msg.Result.TaskId
-
-	// Парсим result
-	var resultData interface{}
-	if err := json.Unmarshal(msg.Result.Result, &resultData); err != nil {
-		log.Error(ctx, "failed to unmarshal result", zap.String("task_id", taskID), zap.Error(err))
-		return
-	}
-
-	// Обнови БД
-	execTimeMs := msg.Result.ExecutionTimeMs
-	update := &models.TaskUpdate{
-		Status:          func() *models.TaskStatus { s := models.TaskStatusCompleted; return &s }(),
-		Result:          msg.Result.Result,
-		ExecutionTimeMs: &execTimeMs,
-		CompletedAt:     func() *time.Time { t := time.Now(); return &t }(),
-	}
-
-	_, err := h.pool.Exec(ctx,
-		`UPDATE tasks SET status=$1, result=$2, completed_at=$3, execution_time_ms=$4 WHERE id=$5`,
-		fmt.Sprint(update.Status),
-		update.Result,
-		update.CompletedAt.UnixMilli(),
-		execTimeMs,
-		taskID,
-	)
-	if err != nil {
-		log.Error(ctx, "failed to update task in db", zap.String("task_id", taskID), zap.Error(err))
-		return
-	}
-
-	// Отправь результат в Kafka
-	kafkaResult := &models.KafkaResultMessage{
-		TaskID:          taskID,
-		WorkerID:        msg.WorkerId,
-		Status:          "completed",
-		Result:          resultData,
-		ExecutionTimeMs: execTimeMs,
-	}
-
-	_ = h.producer.SendResult(kafkaResult)
-
-	log.Info(ctx, "task result processed", zap.String("task_id", taskID), zap.Int64("exec_time_ms", execTimeMs))
-}
-func (h *Handler) updateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string) {
-	now := time.Now()
-	_, _ = h.pool.Exec(ctx,
-		`UPDATE tasks SET status=$1, started_at=$2, worker_id=$3 WHERE id=$4`,
-		string(status),
-		now.UnixMilli(),
-		workerID,
-		taskID,
-	)
 }
 
 func (h *Handler) getTasksFromQueue(ctx context.Context, count int) []*models.KafkaTaskMessage {

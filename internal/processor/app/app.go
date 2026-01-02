@@ -16,6 +16,8 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/postgres"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/handler"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/manager"
+	"github.com/vizurth/distributed-task-scheduler/internal/processor/repository"
+	"github.com/vizurth/distributed-task-scheduler/internal/processor/service"
 	"github.com/vizurth/distributed-task-scheduler/internal/queue"
 	myredis "github.com/vizurth/distributed-task-scheduler/internal/redis"
 	processpb "gitlab.com/vizurth/protos/gen/go/task/task-processor"
@@ -63,7 +65,11 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	taskQueue := make(chan *models.KafkaTaskMessage, 1024)
 	workerManager := manager.NewWorkerManager()
 
-	processorHandler := handler.NewHandler(pool, client, producer, workerManager, taskQueue)
+	processorRepo := repository.NewRepository(pool, client)
+
+	processorService := service.NewService(processorRepo, producer)
+
+	processorHandler := handler.NewHandler(processorService, pool, client, producer, workerManager, taskQueue)
 
 	grpcServer := grpc.NewServer(
 		grpc.MaxConcurrentStreams(100000),
@@ -86,7 +92,7 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", a.config.Api.Port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", a.config.Processor.Port))
 	if err != nil {
 		a.log.Fatal(ctx, "failed to listen for GRPC", zap.Error(err))
 	}
@@ -97,7 +103,7 @@ func (a *App) Run(ctx context.Context) {
 	go a.distributedTasksFromKafka(ctx)
 
 	go func() {
-		a.log.Info(ctx, fmt.Sprintf("GRPC server listening on port %s", a.config.Api.Port))
+		a.log.Info(ctx, fmt.Sprintf("GRPC server listening on port %s", a.config.Processor.Port))
 		if err = a.server.Serve(lis); err != nil {
 			log.Fatal(ctx, "gRPC server failed", zap.Error(err))
 		}

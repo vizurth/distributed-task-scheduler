@@ -205,6 +205,9 @@ services:
       - kafka1
       - kafka2
       - kafka3
+    networks:
+      - kafka-net
+      - monitoring
 
   worker:
     build:
@@ -215,6 +218,11 @@ services:
     depends_on:
       - processor
       - redis
+      - kafka1
+      - kafka2
+      - kafka3
+    networks:
+      - kafka-net
 
 networks:
   monitoring:
