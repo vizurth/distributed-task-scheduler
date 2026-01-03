@@ -16,12 +16,18 @@ type ApiConfig struct {
 	Port string `yaml:"port"`
 }
 
+type ProcessorConfig struct {
+	Host string `yaml:"host"`
+	Port string `yaml:"port"`
+}
+
 // Config содержит общие настройки приложения
 type Config struct {
-	Postgres postgres.Config `yaml:"postgres"`
-	Kafka    queue.Config    `yaml:"kafka"`
-	Redis    redis.Config    `yaml:"redis"`
-	Api      ApiConfig       `yaml:"api"`
+	Postgres  postgres.Config `yaml:"postgres"`
+	Kafka     queue.Config    `yaml:"kafka"`
+	Redis     redis.Config    `yaml:"redis"`
+	Api       ApiConfig       `yaml:"api"`
+	Processor ProcessorConfig `yaml:"processor"`
 }
 
 // New загружает конфигурацию из файла и возвращает Config
