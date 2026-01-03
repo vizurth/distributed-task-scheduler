@@ -15,10 +15,10 @@ import (
 
 type serviceImpl struct {
 	repo     repository.Repository
-	producer *queue.Producer
+	producer queue.Producer
 }
 
-func NewService(repo repository.Repository, producer *queue.Producer) Service {
+func NewService(repo repository.Repository, producer queue.Producer) Service {
 	return &serviceImpl{
 		repo:     repo,
 		producer: producer,

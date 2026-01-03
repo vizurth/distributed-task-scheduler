@@ -32,8 +32,8 @@ type App struct {
 	client        *redis.Client
 	server        *grpc.Server
 	workerManager *manager.WorkerManager
-	consumer      *queue.Consumer
-	producer      *queue.Producer
+	consumer      queue.Consumer
+	producer      queue.Producer
 	taskQueue     chan *models.KafkaTaskMessage
 }
 

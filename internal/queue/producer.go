@@ -14,7 +14,13 @@ import (
 	"go.uber.org/zap"
 )
 
-type Producer struct {
+type Producer interface {
+	SendTask(msg *models.KafkaTaskMessage) error
+	SendResult(msg *models.KafkaResultMessage) error
+	Close()
+}
+
+type kafkaProducer struct {
 	producer        *kafka.Producer
 	config          *Config
 	deliveryChannel chan kafka.Event
@@ -22,7 +28,7 @@ type Producer struct {
 	wg              sync.WaitGroup
 }
 
-func NewProducer(config *Config) (*Producer, error) {
+func NewProducer(config *Config) (Producer, error) {
 	conf := &kafka.ConfigMap{
 		"bootstrap.servers": strings.Join(config.Brokers, ","),
 		"compression.type":  config.CompressionType,
@@ -33,7 +39,7 @@ func NewProducer(config *Config) (*Producer, error) {
 		return nil, fmt.Errorf("failed to create producer: %w", err)
 	}
 
-	producer := &Producer{
+	producer := &kafkaProducer{
 		producer:        p,
 		config:          config,
 		deliveryChannel: make(chan kafka.Event, 500000),
@@ -47,15 +53,15 @@ func NewProducer(config *Config) (*Producer, error) {
 	return producer, nil
 }
 
-func (p *Producer) SendTask(msg *models.KafkaTaskMessage) error {
+func (p *kafkaProducer) SendTask(msg *models.KafkaTaskMessage) error {
 	return p.sendMessage(msg, p.config.TasksNewTopic)
 }
 
-func (p *Producer) SendResult(msg *models.KafkaResultMessage) error {
+func (p *kafkaProducer) SendResult(msg *models.KafkaResultMessage) error {
 	return p.sendMessage(msg, p.config.TasksResultsTopic)
 }
 
-func (p *Producer) sendMessage(message interface{}, topic string) error {
+func (p *kafkaProducer) sendMessage(message interface{}, topic string) error {
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		metrics.KafkaOperationTotal.WithLabelValues("send", "error").Inc()
@@ -83,7 +89,7 @@ func (p *Producer) sendMessage(message interface{}, topic string) error {
 	return nil
 }
 
-func (p *Producer) handleDeliveries() {
+func (p *kafkaProducer) handleDeliveries() {
 	defer p.wg.Done()
 
 	for {
@@ -107,7 +113,7 @@ func (p *Producer) handleDeliveries() {
 	}
 }
 
-func (p *Producer) getMessageKey(message interface{}) string {
+func (p *kafkaProducer) getMessageKey(message interface{}) string {
 	switch msg := message.(type) {
 	case *models.KafkaTaskMessage:
 		return msg.TaskID
@@ -118,7 +124,7 @@ func (p *Producer) getMessageKey(message interface{}) string {
 	}
 }
 
-func (p *Producer) Close() {
+func (p *kafkaProducer) Close() {
 	close(p.stopChan)
 	p.wg.Wait()
 	p.producer.Flush(30000)
