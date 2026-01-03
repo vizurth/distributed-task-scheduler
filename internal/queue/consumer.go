@@ -16,13 +16,18 @@ type Message struct {
 	Topic string
 }
 
-type Consumer struct {
+type Consumer interface {
+	Read(ctx context.Context) (*Message, error)
+	Close() error
+}
+
+type kafkaConsumer struct {
 	consumer *kafka.Consumer
 	config   *Config
 	stop     bool
 }
 
-func NewConsumer(config *Config, topic string) (*Consumer, error) {
+func NewConsumer(config *Config, topic string) (Consumer, error) {
 	conf := &kafka.ConfigMap{
 		"bootstrap.servers":       strings.Join(config.Brokers, ","),
 		"group.id":                config.GroupID,
@@ -41,14 +46,14 @@ func NewConsumer(config *Config, topic string) (*Consumer, error) {
 		return nil, err
 	}
 
-	return &Consumer{
+	return &kafkaConsumer{
 		consumer: c,
 		config:   config,
 		stop:     false,
 	}, nil
 }
 
-func (c *Consumer) Read(ctx context.Context) (*Message, error) {
+func (c *kafkaConsumer) Read(ctx context.Context) (*Message, error) {
 	kafkaMsg, err := c.consumer.ReadMessage(-1)
 	if err != nil {
 		return nil, err
@@ -82,6 +87,6 @@ func (c *Consumer) Read(ctx context.Context) (*Message, error) {
 	}, nil
 }
 
-func (c *Consumer) Close() error {
+func (c *kafkaConsumer) Close() error {
 	return c.consumer.Close()
 }

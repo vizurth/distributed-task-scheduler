@@ -32,7 +32,7 @@ type App struct {
 	log      *logger.Logger
 	pool     *pgxpool.Pool
 	redis    *redis.Client
-	producer *queue.Producer
+	producer queue.Producer
 	server   *grpc.Server
 }
 
