@@ -23,13 +23,13 @@ type Handler struct {
 	service       service.Service
 	pool          *pgxpool.Pool
 	client        *redis.Client
-	producer      *queue.Producer
+	producer      queue.Producer
 	workerManager *manager.WorkerManager
 	taskQueue     chan *models.KafkaTaskMessage
 	mu            sync.RWMutex
 }
 
-func NewHandler(service service.Service, pool *pgxpool.Pool, client *redis.Client, producer *queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
+func NewHandler(service service.Service, pool *pgxpool.Pool, client *redis.Client, producer queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
 	h := &Handler{
 		service:       service,
 		pool:          pool,
