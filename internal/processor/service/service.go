@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
@@ -25,7 +26,7 @@ func NewService(repo repository.Repository, producer queue.Producer) Service {
 	}
 }
 
-func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessage) {
+func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessage) error {
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
 
 	taskID := msg.Result.TaskId
@@ -34,7 +35,7 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	var resultData interface{}
 	if err := json.Unmarshal(msg.Result.Result, &resultData); err != nil {
 		log.Error(ctx, "failed to unmarshal result", zap.String("task_id", taskID), zap.Error(err))
-		return
+		return fmt.Errorf("failed to unmarshal result: %w", err)
 	}
 
 	// Обнови БД
@@ -47,7 +48,7 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	}
 	if err := s.repo.UpdateTask(ctx, taskID, update); err != nil {
 		log.Error(ctx, "failed to update task in db", zap.String("task_id", taskID), zap.Error(err))
-		return
+		return fmt.Errorf("failed to update task in db: %w", err)
 	}
 
 	// Отправь результат в Kafka
@@ -62,12 +63,17 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	_ = s.producer.SendResult(kafkaResult)
 
 	log.Info(ctx, "task result processed", zap.String("task_id", taskID), zap.Int64("exec_time_ms", execTimeMs))
+
+	return nil
 }
-func (s *serviceImpl) UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string) {
+
+func (s *serviceImpl) UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string) error {
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
 	now := time.Now()
 	if err := s.repo.UpdateTaskStatus(ctx, taskID, status, workerID, now); err != nil {
 		log.Error(ctx, "failed to update task status", zap.String("task_id", taskID), zap.Error(err))
-		return
+		return fmt.Errorf("failed to update task status: %w", err)
 	}
+
+	return nil
 }

@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/manager"
@@ -21,19 +19,15 @@ import (
 type Handler struct {
 	processpb.UnimplementedTaskProcessorServer
 	service       service.Service
-	pool          *pgxpool.Pool
-	client        *redis.Client
 	producer      queue.Producer
 	workerManager *manager.WorkerManager
 	taskQueue     chan *models.KafkaTaskMessage
 	mu            sync.RWMutex
 }
 
-func NewHandler(service service.Service, pool *pgxpool.Pool, client *redis.Client, producer queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
+func NewHandler(service service.Service, producer queue.Producer, workerManager *manager.WorkerManager, taskQueue chan *models.KafkaTaskMessage) *Handler {
 	h := &Handler{
 		service:       service,
-		pool:          pool,
-		client:        client,
 		producer:      producer,
 		workerManager: workerManager,
 		taskQueue:     taskQueue,
@@ -80,8 +74,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 		h.workerManager.UpdateSlots(workerID, msg.AvailableSlots)
 
 		if msg.Result != nil {
-			h.service.UpdateTask(ctx, msg) // TODO: заглушка на репозиторий
-			// TODO: метрики по результатам
+			_ = h.service.UpdateTask(ctx, msg)
 		}
 
 		if msg.AvailableSlots > 0 {
@@ -99,7 +92,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 				}
 				tasksAssigned++
 
-				h.service.UpdateTaskStatus(ctx, task.TaskID, models.TaskStatusProcessing, workerID)
+				_ = h.service.UpdateTaskStatus(ctx, task.TaskID, models.TaskStatusProcessing, workerID)
 			}
 		}
 	}
