@@ -8,6 +8,6 @@ import (
 )
 
 type Service interface {
-	UpdateTask(ctx context.Context, msg *processpb.WorkerMessage)
-	UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string)
+	UpdateTask(ctx context.Context, msg *processpb.WorkerMessage) error
+	UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string) error
 }
