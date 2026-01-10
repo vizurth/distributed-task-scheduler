@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
@@ -19,6 +20,12 @@ type ProcessorClient struct {
 	client   processpb.TaskProcessorClient
 	workerID string
 	log      *logger.Logger
+}
+
+type slotManager struct {
+	mu              sync.Mutex
+	availableSlots  int32
+	tasksInProgress int32
 }
 
 func NewProcessorClient(ctx context.Context, processorAddr, workerID string) (*ProcessorClient, error) {
@@ -49,8 +56,10 @@ func (p *ProcessorClient) ProcessTask(ctx context.Context, executor *executor.Ta
 
 	go p.recieveTasksFromStream(ctx, stream, tasksChan)
 
-	availableSlots := int32(5)
-	tasksInProgress := int32(0)
+	sm := &slotManager{
+		availableSlots:  5,
+		tasksInProgress: 0,
+	}
 
 	for {
 		select {
@@ -63,11 +72,17 @@ func (p *ProcessorClient) ProcessTask(ctx context.Context, executor *executor.Ta
 				return nil
 			}
 
-			go p.executeTask(ctx, task, executor, stream, &tasksInProgress, &availableSlots)
-			tasksInProgress++
-			availableSlots--
+			go p.executeTask(ctx, task, executor, stream, sm)
+			sm.mu.Lock()
+			sm.tasksInProgress++
+			sm.availableSlots--
+			sm.mu.Unlock()
 		case <-time.After(5 * time.Second):
-			availableSlots = 5 - tasksInProgress
+			sm.mu.Lock()
+			sm.availableSlots = 5 - sm.tasksInProgress
+			availableSlots := sm.availableSlots
+			sm.mu.Unlock()
+
 			msg := processpb.WorkerMessage{
 				WorkerId:       p.workerID,
 				AvailableSlots: availableSlots,
@@ -108,11 +123,13 @@ func (p *ProcessorClient) recieveTasksFromStream(ctx context.Context, stream pro
 	}
 }
 
-func (p *ProcessorClient) executeTask(ctx context.Context, task *processpb.TaskAssignment, executor *executor.TaskExecutor, stream processpb.TaskProcessor_ProcessTasksClient, tasksInProgress, availableSlots *int32) {
+func (p *ProcessorClient) executeTask(ctx context.Context, task *processpb.TaskAssignment, executor *executor.TaskExecutor, stream processpb.TaskProcessor_ProcessTasksClient, sm *slotManager) {
 	startTime := time.Now()
 
 	defer func() {
-		*tasksInProgress--
+		sm.mu.Lock()
+		sm.tasksInProgress--
+		sm.mu.Unlock()
 	}()
 
 	p.log.Info(ctx, "executing task", zap.String("task_id", task.TaskId))
@@ -132,6 +149,11 @@ func (p *ProcessorClient) executeTask(ctx context.Context, task *processpb.TaskA
 		p.log.Info(ctx, "successfully executed task", zap.String("task_id", task.TaskId))
 	}
 
+	sm.mu.Lock()
+	sm.availableSlots++
+	availableSlots := sm.availableSlots
+	sm.mu.Unlock()
+
 	msg := &processpb.WorkerMessage{
 		WorkerId: p.workerID,
 		Result: &processpb.TaskResult{
@@ -140,7 +162,7 @@ func (p *ProcessorClient) executeTask(ctx context.Context, task *processpb.TaskA
 			Error:           errMsg,
 			ExecutionTimeMs: execTime.Milliseconds(),
 		},
-		AvailableSlots: *availableSlots, // TODO: Возможно стоит обновлять available slots здесь
+		AvailableSlots: availableSlots,
 	}
 	if err = stream.Send(msg); err != nil {
 		p.log.Error(ctx, "failed to send message", zap.Error(err))

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/manager"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/service"
@@ -48,6 +49,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 	defer func() { // cleanup on disconnect
 		if workerID != "" {
 			h.workerManager.UnregisterWorker(workerID)
+			metrics.ProcessorActiveWorkers.Set(float64(h.workerManager.GetActiveWorkersCount()))
 			log.Info(ctx, "worker disconnected", zap.String("worker_id", workerID), zap.Int("tasks_assigned", tasksAssigned))
 		}
 	}()
@@ -66,6 +68,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 		if workerID == "" {
 			workerID = msg.GetWorkerId()
 			h.workerManager.RegisterWorker(workerID)
+			metrics.ProcessorActiveWorkers.Set(float64(h.workerManager.GetActiveWorkersCount()))
 			log.Info(ctx, "worker registred", zap.String("worker_id", workerID))
 		}
 
@@ -91,6 +94,7 @@ func (h *Handler) ProcessTasks(stream grpc.BidiStreamingServer[processpb.WorkerM
 					return err
 				}
 				tasksAssigned++
+				metrics.ProcessorTasksDistributed.WithLabelValues(string(task.TaskType), "assigned").Inc()
 
 				_ = h.service.UpdateTaskStatus(ctx, task.TaskID, models.TaskStatusProcessing, workerID)
 			}

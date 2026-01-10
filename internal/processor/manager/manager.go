@@ -94,3 +94,9 @@ func (wm *WorkerManager) RemoveDeadWorkers() {
 		}
 	}
 }
+
+func (wm *WorkerManager) GetActiveWorkersCount() int {
+	wm.mu.RLock()
+	defer wm.mu.RUnlock()
+	return len(wm.workers)
+}

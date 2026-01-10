@@ -67,7 +67,7 @@ func TestSubmitTask_Success(t *testing.T) {
 
 	mockService.On("SubmitTask", mock.Anything, mock.MatchedBy(func(tc *models.TaskCreate) bool {
 		return tc.UserID == "user-1" && tc.TaskType == models.TaskTypeEmail
-	})).Return(expectedTask, nil)
+	})).Once().Return(expectedTask, nil)
 
 	handler := NewHandler(mockService)
 

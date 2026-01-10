@@ -6,9 +6,11 @@ import (
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/worker/client"
 	"github.com/vizurth/distributed-task-scheduler/internal/worker/executor"
 	"go.uber.org/zap"
@@ -30,7 +32,11 @@ func New(ctx context.Context, workerID string, config *config.Config) (*App, err
 		return nil, err
 	}
 
-	taskExecutor := executor.NewTaskExecutor()
+	taskExecutor := executor.NewTaskExecutor(workerID)
+
+	// Set initial worker status as healthy
+	metrics.WorkerStatus.WithLabelValues(workerID).Set(1)
+	metrics.WorkerProcessingTasks.WithLabelValues(workerID).Set(0)
 
 	return &App{
 		workerID: workerID,
@@ -50,13 +56,30 @@ func (a *App) Run(ctx context.Context) {
 			log.Fatal(ctx, "failed to start worker", zap.Error(err))
 		}
 	}()
-	<-ctx.Done()
-	a.log.Info(ctx, "shutting down gRPC server...")
 
+	go a.monitorHealth(ctx)
+
+	<-ctx.Done()
+	a.log.Info(ctx, "shutting down worker...")
 	a.Shutdown(ctx)
 }
 
 func (a *App) Shutdown(ctx context.Context) {
+	metrics.WorkerStatus.WithLabelValues(a.workerID).Set(0)
 	a.client.Close()
 	a.log.Info(ctx, "worker shutdown complete")
+}
+
+func (a *App) monitorHealth(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			metrics.WorkerStatus.WithLabelValues(a.workerID).Set(1)
+		}
+	}
 }

@@ -7,11 +7,13 @@ import (
 	"net"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"github.com/vizurth/distributed-task-scheduler/internal/postgres"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/handler"
@@ -98,6 +100,7 @@ func (a *App) Run(ctx context.Context) {
 	defer stop()
 
 	go a.distributedTasksFromKafka(ctx)
+	go a.monitorMetrics(ctx)
 
 	go func() {
 		a.log.Info(ctx, fmt.Sprintf("GRPC server listening on port %s", a.config.Processor.Port))
@@ -145,9 +148,23 @@ func (a *App) distributedTasksFromKafka(ctx context.Context) {
 			)
 
 			a.taskQueue <- kafkaTask
-
-			// TODO: Добавить метрику
+			metrics.ProcessorTasksInQueue.Set(float64(len(a.taskQueue)))
 		}
 
+	}
+}
+
+func (a *App) monitorMetrics(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			metrics.ProcessorTasksInQueue.Set(float64(len(a.taskQueue)))
+			metrics.ProcessorActiveWorkers.Set(float64(a.workerManager.GetActiveWorkersCount()))
+		}
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func TestExecuteTask_EmailTask_Success(t *testing.T) {
-	executor := NewTaskExecutor()
+	executor := NewTaskExecutor("test-worker")
 
 	// Создаём email задачу
 	emailPayload := map[string]string{
@@ -78,7 +78,7 @@ func TestExecuteTask_EmailTask_WithValidPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor := NewTaskExecutor()
+			executor := NewTaskExecutor("test-worker")
 
 			emailPayload := map[string]string{
 				"to":      tt.to,
@@ -113,7 +113,7 @@ func TestExecuteTask_EmailTask_WithValidPayload(t *testing.T) {
 }
 
 func TestExecuteTask_UnknownTaskType(t *testing.T) {
-	executor := NewTaskExecutor()
+	executor := NewTaskExecutor("test-worker")
 
 	task := &processpb.TaskAssignment{
 		TaskId:   "task-unknown",
@@ -159,7 +159,7 @@ func TestExecuteTask_InvalidPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor := NewTaskExecutor()
+			executor := NewTaskExecutor("test-worker")
 
 			task := &processpb.TaskAssignment{
 				TaskId:   "task-" + tt.name,
@@ -180,7 +180,7 @@ func TestExecuteTask_InvalidPayload(t *testing.T) {
 }
 
 func TestExecuteTask_Priority_NotAffectsResult(t *testing.T) {
-	executor := NewTaskExecutor()
+	executor := NewTaskExecutor("test-worker")
 
 	emailPayload := map[string]string{
 		"to":      "test@example.com",

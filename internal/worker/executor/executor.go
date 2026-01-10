@@ -6,27 +6,53 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	processpb "gitlab.com/vizurth/protos/gen/go/task/task-processor"
 )
 
 type TaskExecutor struct {
+	workerID string
 }
 
-func NewTaskExecutor() *TaskExecutor {
-	return &TaskExecutor{}
+func NewTaskExecutor(workerID string) *TaskExecutor {
+	return &TaskExecutor{
+		workerID: workerID,
+	}
 }
 
 func (e *TaskExecutor) ExecuteTask(ctx context.Context, task *processpb.TaskAssignment) ([]byte, error) {
+	startTime := time.Now()
+	defer func() {
+		metrics.WorkerProcessingTasks.WithLabelValues(e.workerID).Dec()
+	}()
+
+	metrics.WorkerProcessingTasks.WithLabelValues(e.workerID).Inc()
+
+	var result []byte
+	var err error
+
 	switch task.TaskType {
 	case "email":
-		return e.handleEmailTask(ctx, task)
+		result, err = e.handleEmailTask(ctx, task)
 	case "image":
-		return e.handleImageTask(ctx, task)
+		result, err = e.handleImageTask(ctx, task)
 	case "export":
-		return e.handleExportTask(ctx, task)
+		result, err = e.handleExportTask(ctx, task)
 	default:
-		return nil, fmt.Errorf("unknown task type: %s", task.TaskType)
+		err = fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
+
+	duration := time.Since(startTime).Seconds()
+	metrics.WorkerTaskExecutionDuration.WithLabelValues(e.workerID, task.TaskType).Observe(duration)
+
+	if err != nil {
+		metrics.WorkerTasksExecuted.WithLabelValues(e.workerID, task.TaskType, "failed").Inc()
+		return nil, err
+	}
+
+	metrics.WorkerTasksExecuted.WithLabelValues(e.workerID, task.TaskType, "success").Inc()
+
+	return result, nil
 }
 
 func (e *TaskExecutor) handleEmailTask(ctx context.Context, task *processpb.TaskAssignment) ([]byte, error) {

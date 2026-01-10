@@ -186,6 +186,80 @@ var (
 		},
 		[]string{"status"},
 	)
+
+	// Processor Service метрики
+	ProcessorTasksDistributed = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "taskscheduler",
+			Name:      "processor_tasks_distributed_total",
+			Help:      "Total number of tasks distributed by processor",
+		},
+		[]string{"task_type", "status"},
+	)
+
+	ProcessorTasksInQueue = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "taskscheduler",
+			Name:      "processor_tasks_in_queue",
+			Help:      "Number of tasks currently in processor queue",
+		},
+	)
+
+	ProcessorActiveWorkers = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "taskscheduler",
+			Name:      "processor_active_workers",
+			Help:      "Number of active workers connected to processor",
+		},
+	)
+
+	ProcessorTaskAssignmentDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "taskscheduler",
+			Name:      "processor_task_assignment_duration_seconds",
+			Help:      "Time to assign a task to a worker",
+			Buckets:   []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+		},
+		[]string{"task_type"},
+	)
+
+	// Worker метрики
+	WorkerTasksExecuted = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "taskscheduler",
+			Name:      "worker_tasks_executed_total",
+			Help:      "Total number of tasks executed by worker",
+		},
+		[]string{"worker_id", "task_type", "status"},
+	)
+
+	WorkerTaskExecutionDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "taskscheduler",
+			Name:      "worker_task_execution_duration_seconds",
+			Help:      "Task execution duration on worker",
+			Buckets:   []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 300},
+		},
+		[]string{"worker_id", "task_type"},
+	)
+
+	WorkerStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "taskscheduler",
+			Name:      "worker_status",
+			Help:      "Worker status (1=healthy, 0=unhealthy)",
+		},
+		[]string{"worker_id"},
+	)
+
+	WorkerProcessingTasks = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "taskscheduler",
+			Name:      "worker_processing_tasks",
+			Help:      "Number of tasks currently being processed by worker",
+		},
+		[]string{"worker_id"},
+	)
 )
 
 // RegisterMetrics регистрирует все метрики в Prometheus
@@ -210,6 +284,14 @@ func RegisterMetrics() error {
 		TasksSubmittedTotal,
 		TasksProcessingDuration,
 		TasksByStatus,
+		ProcessorTasksDistributed,
+		ProcessorTasksInQueue,
+		ProcessorActiveWorkers,
+		ProcessorTaskAssignmentDuration,
+		WorkerTasksExecuted,
+		WorkerTaskExecutionDuration,
+		WorkerStatus,
+		WorkerProcessingTasks,
 	}
 
 	for _, m := range metrics {

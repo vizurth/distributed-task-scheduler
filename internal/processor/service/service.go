@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
+	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	"github.com/vizurth/distributed-task-scheduler/internal/processor/repository"
 	"github.com/vizurth/distributed-task-scheduler/internal/queue"
@@ -28,6 +29,7 @@ func NewService(repo repository.Repository, producer queue.Producer) Service {
 
 func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessage) error {
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
+	startTime := time.Now()
 
 	taskID := msg.Result.TaskId
 
@@ -35,6 +37,7 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	var resultData interface{}
 	if err := json.Unmarshal(msg.Result.Result, &resultData); err != nil {
 		log.Error(ctx, "failed to unmarshal result", zap.String("task_id", taskID), zap.Error(err))
+		metrics.ProcessorTasksDistributed.WithLabelValues("unknown", "failed").Inc()
 		return fmt.Errorf("failed to unmarshal result: %w", err)
 	}
 
@@ -48,6 +51,7 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	}
 	if err := s.repo.UpdateTask(ctx, taskID, update); err != nil {
 		log.Error(ctx, "failed to update task in db", zap.String("task_id", taskID), zap.Error(err))
+		metrics.ProcessorTasksDistributed.WithLabelValues("unknown", "failed").Inc()
 		return fmt.Errorf("failed to update task in db: %w", err)
 	}
 
@@ -61,6 +65,9 @@ func (s *serviceImpl) UpdateTask(ctx context.Context, msg *processpb.WorkerMessa
 	}
 
 	_ = s.producer.SendResult(kafkaResult)
+
+	metrics.ProcessorTasksDistributed.WithLabelValues("task", "completed").Inc()
+	metrics.ProcessorTaskAssignmentDuration.WithLabelValues("task").Observe(time.Since(startTime).Seconds())
 
 	log.Info(ctx, "task result processed", zap.String("task_id", taskID), zap.Int64("exec_time_ms", execTimeMs))
 

@@ -55,6 +55,12 @@ func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *
 		return fmt.Errorf("update task failed: %w", err)
 	}
 
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = r.updateTaskCacheFields(ctx, taskID, update)
+	}()
+
 	return nil
 }
 func (r *repositoryImpl) UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string, currTime time.Time) error {
@@ -74,11 +80,67 @@ func (r *repositoryImpl) UpdateTaskStatus(ctx context.Context, taskID string, st
 		return fmt.Errorf("update task status failed: %w", err)
 	}
 
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = r.updateTaskStatusCacheFields(ctx, taskID, status, workerID, currTime)
+	}()
+
 	return nil
 }
 
-// cacheTask кеширует задачу в Redis
-func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error {
+// updateTaskCacheFields обновляет поля задачи в Redis кеше
+func (r *repositoryImpl) updateTaskCacheFields(ctx context.Context, taskID string, update *models.TaskUpdate) error {
+	cachedTask, err := r.GetTaskFromCache(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if cachedTask == nil {
+		return nil
+	}
+
+	if update.Status != nil {
+		cachedTask.Status = *update.Status
+	}
+	if update.Result != nil {
+		cachedTask.Result = update.Result
+	}
+	if update.CompletedAt != nil {
+		cachedTask.CompletedAt = update.CompletedAt
+	}
+	if update.ExecutionTimeMs != nil {
+		cachedTask.ExecutionTimeMs = *update.ExecutionTimeMs
+	}
+	if update.Error != nil {
+		cachedTask.Error = *update.Error
+	}
+	if update.Progress != nil {
+		cachedTask.Progress = *update.Progress
+	}
+
+	return r.CacheTask(ctx, cachedTask)
+}
+
+// updateTaskStatusCacheFields обновляет статус задачи в Redis кеше
+func (r *repositoryImpl) updateTaskStatusCacheFields(ctx context.Context, taskID string, status models.TaskStatus, workerID string, currTime time.Time) error {
+	cachedTask, err := r.GetTaskFromCache(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if cachedTask == nil {
+		return nil
+	}
+
+	cachedTask.Status = status
+	cachedTask.StartedAt = &currTime
+
+	return r.CacheTask(ctx, cachedTask)
+}
+
+// CacheTask кеширует задачу в Redis
+func (r *repositoryImpl) CacheTask(ctx context.Context, task *models.Task) error {
 	start := time.Now()
 	operation := "cache_set"
 
@@ -106,8 +168,8 @@ func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error
 	return err
 }
 
-// getTaskFromCache получает задачу из Redis кеша
-func (r *repositoryImpl) getTaskFromCache(ctx context.Context, taskID string) (*models.Task, error) {
+// GetTaskFromCache получает задачу из Redis кеша
+func (r *repositoryImpl) GetTaskFromCache(ctx context.Context, taskID string) (*models.Task, error) {
 	start := time.Now()
 	operation := "cache_get"
 
@@ -139,4 +201,26 @@ func (r *repositoryImpl) getTaskFromCache(ctx context.Context, taskID string) (*
 
 	metrics.RedisOperationTotal.WithLabelValues(operation, "success").Inc()
 	return &task, nil
+}
+
+// InvalidateTaskCache удаляет задачу из Redis кеша
+func (r *repositoryImpl) InvalidateTaskCache(ctx context.Context, taskID string) error {
+	start := time.Now()
+	operation := "cache_delete"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.RedisOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
+	key := r.getRedisKey(taskID)
+	err := r.client.Del(ctx, key).Err()
+	if err != nil {
+		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
+		log := logger.GetOrCreateLoggerFromCtx(ctx)
+		log.Error(ctx, "failed to invalidate task cache", zap.String("task_id", taskID), zap.Error(err))
+		return fmt.Errorf("failed to invalidate task cache: %w", err)
+	}
+	metrics.RedisOperationTotal.WithLabelValues(operation, "success").Inc()
+	return nil
 }

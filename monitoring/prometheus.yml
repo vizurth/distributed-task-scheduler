@@ -8,3 +8,8 @@ scrape_configs:
       - targets: ['api-service:8001']
     metrics_path: '/metrics'
     scrape_interval: 5s
+  - job_name: 'processor'
+    static_configs:
+      - targets: [ 'processor:8002' ]
+    metrics_path: '/metrics'
+    scrape_interval: 5s

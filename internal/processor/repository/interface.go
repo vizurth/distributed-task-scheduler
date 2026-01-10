@@ -10,4 +10,7 @@ import (
 type Repository interface {
 	UpdateTask(ctx context.Context, taskID string, update *models.TaskUpdate) error
 	UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus, workerID string, currTime time.Time) error
+	CacheTask(ctx context.Context, task *models.Task) error
+	GetTaskFromCache(ctx context.Context, taskID string) (*models.Task, error)
+	InvalidateTaskCache(ctx context.Context, taskID string) error
 }

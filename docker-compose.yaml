@@ -199,6 +199,7 @@ services:
     restart: on-failure
     ports:
       - "50052:50052"
+      - "8002:8002"  # Порт для метрик processor
     depends_on:
       - postgres
       - redis
@@ -209,12 +210,16 @@ services:
       - kafka-net
       - monitoring
 
-  worker:
+  worker1:
     build:
       context: ./
       dockerfile: cmd/worker/Dockerfile
-    container_name: task-scheduler-worker
+    container_name: task-scheduler-worker-1
     restart: on-failure
+    ports:
+      - "8003:8002"  # Порт для метрик worker-1
+    environment:
+      - WORKER_INSTANCE=1
     depends_on:
       - processor
       - redis
@@ -223,6 +228,27 @@ services:
       - kafka3
     networks:
       - kafka-net
+      - monitoring
+
+  worker2:
+    build:
+      context: ./
+      dockerfile: cmd/worker/Dockerfile
+    container_name: task-scheduler-worker-2
+    restart: on-failure
+    ports:
+      - "8004:8002"
+    environment:
+      - WORKER_INSTANCE=2
+    depends_on:
+      - processor
+      - redis
+      - kafka1
+      - kafka2
+      - kafka3
+    networks:
+      - kafka-net
+      - monitoring
 
 networks:
   monitoring:
