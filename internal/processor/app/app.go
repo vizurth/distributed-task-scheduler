@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os/signal"
 	"syscall"
@@ -12,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
+	"github.com/vizurth/distributed-task-scheduler/internal/constants"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
@@ -51,27 +51,29 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	client, err := myredis.NewClient(ctx, config.Redis)
 	if err != nil {
 		log.Error(ctx, "failed to connect redis", zap.Error(err))
+		return nil, err
 	}
 
 	consumer, err := queue.NewConsumer(&config.Kafka, "tasks-new")
 	if err != nil {
-		log.Error(ctx, "failed create consumer", zap.Error(err))
+		log.Error(ctx, "failed to create consumer", zap.Error(err))
 		return nil, err
 	}
 
 	producer, err := queue.NewProducer(&config.Kafka)
 	if err != nil {
-		log.Error(ctx, "failed create producer", zap.Error(err))
+		log.Error(ctx, "failed to create producer", zap.Error(err))
 		return nil, err
 	}
-	taskQueue := make(chan *models.KafkaTaskMessage, 1024)
+
+	taskQueue := make(chan *models.KafkaTaskMessage, constants.ProcessorTaskQueueSize)
 	workerManager := manager.NewWorkerManager()
 
 	processorRepo := repository.NewRepository(pool, client)
 	processorService := service.NewService(processorRepo, producer)
 	processorHandler := handler.NewHandler(processorService, producer, workerManager, taskQueue)
 	grpcServer := grpc.NewServer(
-		grpc.MaxConcurrentStreams(100000),
+		grpc.MaxConcurrentStreams(constants.GRPCMaxConcurrentStreams),
 	)
 
 	processpb.RegisterTaskProcessorServer(grpcServer, processorHandler)
@@ -93,19 +95,19 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 func (a *App) Run(ctx context.Context) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", a.config.Processor.Port))
 	if err != nil {
-		a.log.Fatal(ctx, "failed to listen for GRPC", zap.Error(err))
+		a.log.Fatal(ctx, "failed to listen for gRPC", zap.Error(err))
 	}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go a.distributedTasksFromKafka(ctx)
+	go a.consumeTasksFromKafka(ctx)
 	go a.monitorMetrics(ctx)
 
 	go func() {
-		a.log.Info(ctx, fmt.Sprintf("GRPC server listening on port %s", a.config.Processor.Port))
+		a.log.Info(ctx, "gRPC server listening", zap.String("port", a.config.Processor.Port))
 		if err = a.server.Serve(lis); err != nil {
-			log.Fatal(ctx, "gRPC server failed", zap.Error(err))
+			a.log.Fatal(ctx, "gRPC server failed", zap.Error(err))
 		}
 	}()
 	<-ctx.Done()
@@ -118,14 +120,20 @@ func (a *App) Run(ctx context.Context) {
 func (a *App) Shutdown(ctx context.Context) {
 	a.server.GracefulStop()
 	a.pool.Close()
-	a.client.Close()
-	a.consumer.Close()
+
+	if err := a.client.Close(); err != nil {
+		a.log.Error(ctx, "failed to close redis connection", zap.Error(err))
+	}
+
+	if err := a.consumer.Close(); err != nil {
+		a.log.Error(ctx, "failed to close kafka consumer", zap.Error(err))
+	}
+
 	a.producer.Close()
 	a.log.Info(ctx, "processor shutdown complete")
 }
 
-func (a *App) distributedTasksFromKafka(ctx context.Context) {
-
+func (a *App) consumeTasksFromKafka(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -150,12 +158,11 @@ func (a *App) distributedTasksFromKafka(ctx context.Context) {
 			a.taskQueue <- kafkaTask
 			metrics.ProcessorTasksInQueue.Set(float64(len(a.taskQueue)))
 		}
-
 	}
 }
 
 func (a *App) monitorMetrics(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(constants.MetricsMonitorInterval)
 	defer ticker.Stop()
 
 	for {

@@ -4,54 +4,70 @@ import "time"
 
 // Task processing constants
 const (
-	// Приоритеты задач
 	MinTaskPriority = 1
 	MaxTaskPriority = 10
 
-	// Лимиты
 	DefaultTaskListLimit = 100
 	MaxTaskListLimit     = 1000
 )
 
 // Worker constants
 const (
-	// Количество слотов для выполнения задач
 	DefaultWorkerSlots = 5
 	MaxWorkerSlots     = 20
 )
 
 // Timeout constants
 const (
-	// gRPC таймауты
 	GRPCDefaultTimeout = 30 * time.Second
 	GRPCDialTimeout    = 10 * time.Second
 
-	// Database таймауты
 	DBQueryTimeout = 5 * time.Second
 
-	// Redis таймауты
 	RedisDefaultTimeout = 3 * time.Second
 
-	// Kafka таймауты
 	KafkaFlushTimeout = 30 * time.Second
 )
 
 // Cache constants
 const (
-	// TTL для кеша
 	TaskCacheTTL = 1 * time.Hour
 
-	// Размеры буферов
 	KafkaDeliveryChannelBuffer = 10000
 	TaskQueueChannelBuffer     = 1000
 )
 
 // Heartbeat constants
 const (
-	// Интервалы heartbeat
 	WorkerHeartbeatInterval = 5 * time.Second
 	WorkerDeadTimeout       = 30 * time.Second
 	DeadWorkerCheckInterval = 10 * time.Second
+)
+
+// gRPC server tuning constants
+const (
+	GRPCMaxConcurrentStreams  = 100_000
+	GRPCMaxHeaderListSize     = 32 * 1024
+	GRPCInitialConnWindowSize = 32 * 1024 * 1024
+	GRPCInitialWindowSize     = 16 * 1024 * 1024
+	GRPCWriteBufferSize       = 64 * 1024
+	GRPCReadBufferSize        = 64 * 1024
+
+	GRPCKeepaliveTime    = 15 * time.Second
+	GRPCKeepaliveTimeout = 5 * time.Second
+	GRPCKeepaliveMinTime = 5 * time.Second
+)
+
+// Monitoring intervals
+const (
+	DBStatsInterval        = 10 * time.Second
+	MetricsMonitorInterval = 10 * time.Second
+)
+
+// Processor constants
+const (
+	ProcessorTaskQueueSize = 1024
+	CacheUpdateTimeout     = 5 * time.Second
 )
 
 // Error messages

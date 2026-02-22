@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -96,7 +97,7 @@ func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *
 
 	// Асинхронно обновляем кеш
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.CacheUpdateTimeout)
 		defer cancel()
 		_ = r.updateTaskCacheFields(ctx, taskID, update)
 	}()
@@ -139,7 +140,7 @@ func (r *repositoryImpl) UpdateTaskStatus(ctx context.Context, taskID string, st
 
 	// Асинхронно обновляем кеш
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.CacheUpdateTimeout)
 		defer cancel()
 		_ = r.updateTaskStatusCacheFields(ctx, taskID, status, workerID, currTime)
 	}()
@@ -181,7 +182,7 @@ func (r *repositoryImpl) updateTaskCacheFields(ctx context.Context, taskID strin
 }
 
 // updateTaskStatusCacheFields обновляет статус задачи в Redis кеше
-func (r *repositoryImpl) updateTaskStatusCacheFields(ctx context.Context, taskID string, status models.TaskStatus, workerID string, currTime time.Time) error {
+func (r *repositoryImpl) updateTaskStatusCacheFields(ctx context.Context, taskID string, status models.TaskStatus, _ string, currTime time.Time) error {
 	cachedTask, err := r.GetTaskFromCache(ctx, taskID)
 	if err != nil {
 		return err
@@ -239,7 +240,7 @@ func (r *repositoryImpl) GetTaskFromCache(ctx context.Context, taskID string) (*
 	key := r.getRedisKey(taskID)
 	val, err := r.client.Get(ctx, key).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			metrics.RedisOperationTotal.WithLabelValues(operation, "not_found").Inc()
 			return nil, nil
 		}

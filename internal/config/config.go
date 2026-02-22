@@ -10,7 +10,7 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/redis"
 )
 
-// PRConfig содержит настройки для сервера PR
+// ApiConfig содержит настройки для API-сервера.
 type ApiConfig struct {
 	Host string `yaml:"host"`
 	Port string `yaml:"port"`

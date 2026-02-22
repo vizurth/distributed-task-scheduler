@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os/signal"
 	"syscall"
@@ -15,6 +14,7 @@ import (
 	"github.com/vizurth/distributed-task-scheduler/internal/api/repository"
 	"github.com/vizurth/distributed-task-scheduler/internal/api/service"
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
+	"github.com/vizurth/distributed-task-scheduler/internal/constants"
 	"github.com/vizurth/distributed-task-scheduler/internal/grpc/interceptors"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
@@ -49,7 +49,8 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 		return nil, err
 	}
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(constants.DBStatsInterval)
+		defer ticker.Stop()
 		for range ticker.C {
 			stats := pool.Stat()
 			metrics.DBConnectionsAvailable.Set(float64(stats.TotalConns()))
@@ -77,28 +78,22 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 	taskHandler := handler.NewHandler(taskService)
 
 	opts := []grpc.ServerOption{
-		// Увеличиваем лимиты
-		grpc.MaxConcurrentStreams(100000),
-		grpc.MaxHeaderListSize(32 * 1024),
-		grpc.InitialConnWindowSize(32 * 1024 * 1024),
-		grpc.InitialWindowSize(16 * 1024 * 1024),
-
-		// Оптимальный keepalive
+		grpc.MaxConcurrentStreams(constants.GRPCMaxConcurrentStreams),
+		grpc.MaxHeaderListSize(constants.GRPCMaxHeaderListSize),
+		grpc.InitialConnWindowSize(constants.GRPCInitialConnWindowSize),
+		grpc.InitialWindowSize(constants.GRPCInitialWindowSize),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    15 * time.Second,
-			Timeout: 5 * time.Second,
+			Time:    constants.GRPCKeepaliveTime,
+			Timeout: constants.GRPCKeepaliveTimeout,
 		}),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             5 * time.Second,
+			MinTime:             constants.GRPCKeepaliveMinTime,
 			PermitWithoutStream: true,
 		}),
-
-		// Увеличиваем буферы
-		grpc.WriteBufferSize(64 * 1024),
-		grpc.ReadBufferSize(64 * 1024),
-
+		grpc.WriteBufferSize(constants.GRPCWriteBufferSize),
+		grpc.ReadBufferSize(constants.GRPCReadBufferSize),
 		grpc.UnaryInterceptor(
-			interceptors.TimeoutInterceptor(4 * time.Second),
+			interceptors.TimeoutInterceptor(constants.GRPCDefaultTimeout),
 		),
 	}
 
@@ -119,16 +114,16 @@ func New(ctx context.Context, config *config.Config) (*App, error) {
 func (a *App) Run(ctx context.Context) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", a.config.Api.Port))
 	if err != nil {
-		a.log.Fatal(ctx, "failed to listen for GRPC", zap.Error(err))
+		a.log.Fatal(ctx, "failed to listen for gRPC", zap.Error(err))
 	}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		a.log.Info(ctx, fmt.Sprintf("GRPC server listening on port %s", a.config.Api.Port))
+		a.log.Info(ctx, "gRPC server listening", zap.String("port", a.config.Api.Port))
 		if err = a.server.Serve(lis); err != nil {
-			log.Fatal(ctx, "gRPC server failed", zap.Error(err))
+			a.log.Fatal(ctx, "gRPC server failed", zap.Error(err))
 		}
 	}()
 	<-ctx.Done()
@@ -144,8 +139,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	if err := a.redis.Close(); err != nil {
 		a.log.Error(ctx, "failed to close redis connection", zap.Error(err))
 	}
-	a.redis.Close()
 	a.producer.Close()
 
-	a.log.Info(ctx, "successfully shutdown gRPC server")
+	a.log.Info(ctx, "gRPC server shutdown complete")
 }

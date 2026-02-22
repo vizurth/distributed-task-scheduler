@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
+	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	processpb "gitlab.com/vizurth/protos/gen/go/task/task-processor"
 )
 
@@ -35,12 +36,12 @@ func (e *TaskExecutor) ExecuteTask(ctx context.Context, task *processpb.TaskAssi
 	var err error
 
 	// Выбираем обработчик в зависимости от типа задачи
-	switch task.TaskType {
-	case "email":
+	switch models.TaskType(task.TaskType) {
+	case models.TaskTypeEmail:
 		result, err = e.handleEmailTask(ctx, task)
-	case "image":
+	case models.TaskTypeImage:
 		result, err = e.handleImageTask(ctx, task)
-	case "export":
+	case models.TaskTypeExport:
 		result, err = e.handleExportTask(ctx, task)
 	default:
 		err = fmt.Errorf("unknown task type: %s", task.TaskType)

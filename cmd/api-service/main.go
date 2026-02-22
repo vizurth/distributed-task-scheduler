@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/api/app"
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
@@ -16,9 +15,10 @@ func main() {
 		panic("failed to register metrics: " + err.Error())
 	}
 
-	// Запусти metrics HTTP server на порту 8001 с health checks
 	metricsPort := "8001"
-	metrics.StartMetricsServer(metricsPort)
+	metrics.StartMetricsServer(metricsPort, func(err error) {
+		panic("metrics server failed: " + err.Error())
+	})
 
 	ctx := context.Background()
 	cfg, err := config.New()
@@ -26,13 +26,12 @@ func main() {
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
 
 	if err != nil {
-		log.Fatal(ctx, "failed to lad config")
+		log.Fatal(ctx, "failed to load config", zap.Error(err))
 	}
 
 	application, err := app.New(ctx, cfg)
 	if err != nil {
 		log.Fatal(ctx, "failed to initialize application", zap.Error(err))
-		os.Exit(1)
 	}
 
 	application.Run(ctx)

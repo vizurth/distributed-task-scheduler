@@ -302,12 +302,20 @@ func RegisterMetrics() error {
 	return nil
 }
 
-// StartMetricsServer запускает HTTP сервер для /metrics endpoint
-func StartMetricsServer(port string) {
-	http.Handle("/metrics", promhttp.Handler())
+// StartMetricsServer запускает HTTP-сервер для /metrics endpoint в фоновой горутине.
+// Если сервер завершается с ошибкой — вызывается errHandler.
+func StartMetricsServer(port string, errHandler func(error)) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
 	go func() {
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
-			panic(err)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if errHandler != nil {
+				errHandler(err)
+			}
 		}
 	}()
 }

@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/config"
+	"github.com/vizurth/distributed-task-scheduler/internal/constants"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/worker/client"
@@ -28,7 +28,7 @@ func New(ctx context.Context, workerID string, config *config.Config) (*App, err
 
 	processClient, err := client.NewProcessorClient(ctx, fmt.Sprintf("%s:%s", config.Processor.Host, config.Processor.Port), workerID)
 	if err != nil {
-		log.Error(ctx, "failed to up client", zap.Error(err))
+		log.Error(ctx, "failed to connect to processor", zap.Error(err))
 		return nil, err
 	}
 
@@ -51,27 +51,27 @@ func (a *App) Run(ctx context.Context) {
 	defer stop()
 
 	go func() {
-		a.log.Info(ctx, fmt.Sprintf("start worker"))
+		a.log.Info(ctx, "worker started", zap.String("worker_id", a.workerID))
 		if err := a.client.ProcessTask(ctx, a.executor); err != nil {
-			log.Fatal(ctx, "failed to start worker", zap.Error(err))
+			a.log.Fatal(ctx, "worker processing loop failed", zap.Error(err))
 		}
 	}()
 
 	go a.monitorHealth(ctx)
 
 	<-ctx.Done()
-	a.log.Info(ctx, "shutting down worker...")
+	a.log.Info(ctx, "shutting down worker...", zap.String("worker_id", a.workerID))
 	a.Shutdown(ctx)
 }
 
 func (a *App) Shutdown(ctx context.Context) {
 	metrics.WorkerStatus.WithLabelValues(a.workerID).Set(0)
 	a.client.Close()
-	a.log.Info(ctx, "worker shutdown complete")
+	a.log.Info(ctx, "worker shutdown complete", zap.String("worker_id", a.workerID))
 }
 
 func (a *App) monitorHealth(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(constants.WorkerHeartbeatInterval)
 	defer ticker.Stop()
 
 	for {
