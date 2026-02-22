@@ -1,8 +1,10 @@
 package converters
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/vizurth/distributed-task-scheduler/internal/constants"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
 	taskpb "gitlab.com/vizurth/protos/gen/go/task/task-api-service"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -101,6 +103,10 @@ func ProtoToTaskFilter(req *taskpb.ListTasksRequest) *models.TaskFilter {
 
 // TaskToKafkaMessage конвертирует Task в KafkaTaskMessage
 func TaskToKafkaMessage(task *models.Task) *models.KafkaTaskMessage {
+	if task == nil {
+		return nil
+	}
+
 	return &models.KafkaTaskMessage{
 		TaskID:     task.TaskID,
 		TaskType:   string(task.TaskType),
@@ -121,5 +127,44 @@ func TimestampToTime(ts *timestamppb.Timestamp) time.Time {
 
 // TimeToTimestamp конвертирует time.Time в proto Timestamp
 func TimeToTimestamp(t time.Time) *timestamppb.Timestamp {
+	if t.IsZero() {
+		return nil
+	}
 	return timestamppb.New(t)
+}
+
+// ValidateTaskCreate проверяет корректность данных для создания задачи
+func ValidateTaskCreate(task *models.TaskCreate) error {
+	if task == nil {
+		return fmt.Errorf("task is nil")
+	}
+
+	if task.UserID == "" {
+		return fmt.Errorf(constants.ErrMsgUserIDRequired)
+	}
+
+	if task.TaskType == "" {
+		return fmt.Errorf(constants.ErrMsgTaskTypeRequired)
+	}
+
+	// Проверяем что тип задачи поддерживается
+	validTypes := map[models.TaskType]bool{
+		models.TaskTypeEmail:  true,
+		models.TaskTypeImage:  true,
+		models.TaskTypeExport: true,
+	}
+
+	if !validTypes[task.TaskType] {
+		return fmt.Errorf("%s: %s", constants.ErrMsgInvalidTaskType, task.TaskType)
+	}
+
+	if task.Priority < constants.MinTaskPriority || task.Priority > constants.MaxTaskPriority {
+		return fmt.Errorf(constants.ErrMsgInvalidPriority)
+	}
+
+	if len(task.Payload) == 0 {
+		return fmt.Errorf(constants.ErrMsgPayloadRequired)
+	}
+
+	return nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/vizurth/distributed-task-scheduler/internal/api/converters"
@@ -37,6 +38,16 @@ func (s *serviceImpl) SubmitTask(ctx context.Context, taskCreate *models.TaskCre
 
 	log := logger.GetOrCreateLoggerFromCtx(ctx)
 
+	// Валидация входных данных
+	if err := converters.ValidateTaskCreate(taskCreate); err != nil {
+		metrics.ServiceOperationTotal.WithLabelValues(operation, "validation_error").Inc()
+		log.Warn(ctx, "task validation failed",
+			zap.String("user_id", taskCreate.UserID),
+			zap.String("task_type", string(taskCreate.TaskType)),
+			zap.Error(err))
+		return nil, fmt.Errorf("task validation failed: %w", err)
+	}
+
 	submitTask, err := s.repo.CreateTask(ctx, taskCreate)
 	if err != nil {
 		metrics.ServiceOperationTotal.WithLabelValues(operation, "error").Inc()
@@ -45,6 +56,11 @@ func (s *serviceImpl) SubmitTask(ctx context.Context, taskCreate *models.TaskCre
 	}
 
 	kafkaMsg := converters.TaskToKafkaMessage(submitTask)
+	if kafkaMsg == nil {
+		metrics.ServiceOperationTotal.WithLabelValues(operation, "error").Inc()
+		log.Error(ctx, "failed to convert task to kafka message", zap.String("task_id", submitTask.TaskID))
+		return nil, fmt.Errorf("failed to convert task to kafka message")
+	}
 
 	kafkaStart := time.Now()
 	err = s.producer.SendTask(kafkaMsg)

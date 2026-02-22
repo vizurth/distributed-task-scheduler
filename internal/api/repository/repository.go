@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/vizurth/distributed-task-scheduler/internal/constants"
 	"github.com/vizurth/distributed-task-scheduler/internal/logger"
 	"github.com/vizurth/distributed-task-scheduler/internal/metrics"
 	"github.com/vizurth/distributed-task-scheduler/internal/models"
@@ -19,7 +20,6 @@ import (
 
 const (
 	redisTaskKeyPrefix = "task:"
-	redisTaskTTL       = time.Hour
 )
 
 type repositoryImpl struct {
@@ -392,11 +392,60 @@ func (r *repositoryImpl) UpdateTask(ctx context.Context, taskID string, update *
 
 	// Кешируем обновленную задачу в Redis
 	if err := r.cacheTask(ctx, task); err != nil {
-		// Логируем ошибку, но не прерываем выполнение
-		_ = err
+		log := logger.GetOrCreateLoggerFromCtx(ctx)
+		log.Warn(ctx, "failed to cache updated task in Redis", zap.String("task_id", taskID), zap.Error(err))
 	}
 
 	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
+	return task, nil
+}
+
+// CancelTask отменяет задачу по ID
+func (r *repositoryImpl) CancelTask(ctx context.Context, taskID string) (*models.Task, error) {
+	start := time.Now()
+	operation := "CancelTask"
+
+	defer func() {
+		duration := time.Since(start).Seconds()
+		metrics.DBOperationDuration.WithLabelValues(operation).Observe(duration)
+	}()
+
+	log := logger.GetOrCreateLoggerFromCtx(ctx)
+
+	// Проверяем текущий статус задачи
+	currentTask, err := r.GetTaskByID(ctx, taskID)
+	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
+		return nil, fmt.Errorf("failed to get task for cancellation: %w", err)
+	}
+
+	// Проверяем, что задачу можно отменить
+	if currentTask.Status == models.TaskStatusCompleted || currentTask.Status == models.TaskStatusFailed {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
+		log.Warn(ctx, "cannot cancel task in terminal state",
+			zap.String("task_id", taskID),
+			zap.String("status", string(currentTask.Status)))
+		return currentTask, fmt.Errorf("task is already in terminal state: %s", currentTask.Status)
+	}
+
+	// Обновляем статус на cancelled
+	cancelledStatus := models.TaskStatusCancelled
+	now := time.Now()
+	update := &models.TaskUpdate{
+		Status:      &cancelledStatus,
+		CompletedAt: &now,
+	}
+
+	task, err := r.UpdateTask(ctx, taskID, update)
+	if err != nil {
+		metrics.DBOperationTotal.WithLabelValues(operation, "error").Inc()
+		log.Error(ctx, "failed to update task to cancelled", zap.String("task_id", taskID), zap.Error(err))
+		return nil, fmt.Errorf("failed to cancel task: %w", err)
+	}
+
+	metrics.DBOperationTotal.WithLabelValues(operation, "success").Inc()
+	log.Info(ctx, "task cancelled successfully", zap.String("task_id", taskID))
+
 	return task, nil
 }
 
@@ -541,18 +590,6 @@ func (r *repositoryImpl) ListTasks(ctx context.Context, filter *models.TaskFilte
 	return tasks, nil
 }
 
-// CancelTask обновляет статус задачи на cancelled
-func (r *repositoryImpl) CancelTask(ctx context.Context, taskID string) (*models.Task, error) {
-	update := &models.TaskUpdate{
-		Status: func() *models.TaskStatus {
-			status := models.TaskStatusCancelled
-			return &status
-		}(),
-	}
-
-	return r.UpdateTask(ctx, taskID, update)
-}
-
 // cacheTask кеширует задачу в Redis
 func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error {
 	start := time.Now()
@@ -571,7 +608,7 @@ func (r *repositoryImpl) cacheTask(ctx context.Context, task *models.Task) error
 		return fmt.Errorf("failed to marshal task for Redis cache: %w", err)
 	}
 	key := r.getRedisKey(task.TaskID)
-	err = r.client.Set(ctx, key, taskJson, redisTaskTTL).Err()
+	err = r.client.Set(ctx, key, taskJson, constants.TaskCacheTTL).Err()
 	if err != nil {
 		metrics.RedisOperationTotal.WithLabelValues(operation, "error").Inc()
 		log := logger.GetOrCreateLoggerFromCtx(ctx)
