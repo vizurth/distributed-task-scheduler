@@ -11,20 +11,27 @@
 Система состоит из трёх основных компонентов:
 
 API Service
+
 - gRPC сервер для отправки задач и запросов статуса
 - Управление задачами через API endpoints
 - Endpoint метрик на порту 8001
 
 Processor Service
+
 - Распределение задач доступным workers
 - Управление соединениями и здоровьем workers
 - Управление очередью и назначение работ в зависимости от доступности workers
 - Endpoint метрик на порту 8002
 
 Worker Service
+
 - Выполнение назначенных задач
 - Передача результатов обратно в processor
 - Поддержка горизонтального масштабирования
+
+## Диаграмма архитектуры
+
+![Alt text](design.svg)
 
 ## Технологический стек
 
@@ -57,7 +64,7 @@ RPC Фреймворк: gRPC 1.78.0
 
 ## Структура проекта
 
-```
+````
 distributed-task-scheduler/
 ├── cmd/
 │   ├── api-service/          Точка входа API сервиса
@@ -109,7 +116,7 @@ make up
 docker-compose logs -f
 
 make down
-```
+````
 
 ### Локальная сборка для разработки
 
@@ -120,16 +127,19 @@ make up
 ## Endpoints сервисов
 
 API Service
+
 - gRPC сервер: localhost:50051
 - Метрики: http://localhost:8001/metrics
 
 Processor Service
+
 - gRPC сервер: localhost:50052
 - Метрики: http://localhost:8002/metrics
 
 ## Мониторинг и наблюдаемость
 
 ### Grafana Dashboard
+
 - URL: http://localhost:3000
 - Пользователь: admin
 - Пароль: admin
@@ -137,11 +147,13 @@ Processor Service
 Предварительно настроенная панель для мониторинга производительности системы.
 
 ### Prometheus
+
 - URL: http://localhost:9090
 - Интервал сбора метрик: 15 секунд
 - Период хранения: 7 дней
 
 ### Kafka UI
+
 - URL: http://localhost:9020
 - Мониторинг кластера Kafka и топиков сообщений
 
@@ -150,60 +162,77 @@ Processor Service
 ### Метрики API Service
 
 taskscheduler_grpc_requests_total
+
 - Общее количество gRPC запросов по методам и статусам
 
 taskscheduler_grpc_request_duration_seconds
+
 - Гистограмма задержки запросов
 
 taskscheduler_grpc_request_errors_total
+
 - Общее количество ошибок по методам и типам
 
 taskscheduler_tasks_submitted_total
+
 - Общее количество отправленных задач по типам
 
 taskscheduler_tasks_by_status
+
 - Количество задач по статусам
 
 ### Метрики Processor Service
 
 taskscheduler_processor_tasks_distributed_total
+
 - Распределённые задачи по типам и статусам
 
 taskscheduler_processor_tasks_in_queue
+
 - Задачи в ожидании распределения
 
 taskscheduler_processor_active_workers
+
 - Количество подключённых workers
 
 taskscheduler_processor_task_assignment_duration_seconds
+
 - Время распределения задачи worker
 
 ### Метрики Worker
 
 taskscheduler_worker_tasks_executed_total
+
 - Выполненные задачи по worker, типу и статусу
 
 taskscheduler_worker_task_execution_duration_seconds
+
 - Гистограмма времени выполнения задачи
 
 taskscheduler_worker_status
+
 - Статус здоровья worker (1 = здоров, 0 = нездоров)
 
 taskscheduler_worker_processing_tasks
+
 - Количество текущих обрабатываемых задач
 
 ### Метрики инфраструктуры
 
 taskscheduler_db_operation_duration_seconds
+
 - Задержка запросов к БД
 
 taskscheduler_db_operation_total
+
 - Количество операций с БД
 
 taskscheduler_redis_operation_duration_seconds
+
 - Задержка операций Redis
 
 taskscheduler_kafka_operation_total
+
 - Количество операций с очередью
 
 ## База данных
