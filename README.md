@@ -36,12 +36,19 @@ Worker Service
 ## Технологический стек
 
 Язык: Go 1.25.4
+
 RPC Фреймворк: gRPC 1.78.0
+
 Очередь сообщений: Apache Kafka 7.7.1
+
 База данных: PostgreSQL 14
+
 Кеш: Redis latest
+
 Метрики: Prometheus latest
+
 Визуализация: Grafana latest
+
 Контейнеризация: Docker Compose
 
 ## Ключевые особенности
